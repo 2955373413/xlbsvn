@@ -1,0 +1,854 @@
+<style>
+  .bt-w-main {
+    width: 760px;
+  }
+
+  .soft-man-con .title {
+    height: 30px;
+    line-height: 30px;
+  }
+
+  .mr16 {
+    margin-right: 16px;
+  }
+
+  .logs-content {
+    position: relative;
+  }
+
+  .logs-content:hover .full {
+    display: block;
+  }
+
+  .logs-box {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  /* 仓库链接样式修复 */
+  .svn-url-container {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+  
+  .view-full-url {
+    display: inline-block;
+    white-space: nowrap;
+  }
+  
+  /* 确保表格内容不会被挤压 */
+  .divtable {
+    table-layout: fixed;
+  }
+  
+  .divtable.style-simplify table {
+    min-width: 840px;
+  }
+</style>
+<div class="bt-w-main">
+  <div class="bt-w-menu">
+    <p class="bgw">服务状态</p>
+    <p>版本库</p>
+  </div>
+  <div id="webEdit-con" class="bt-w-con pd15">
+  </div>
+</div>
+<script type="text/javascript">
+  var btsvn = {
+    plugin_name: 'btsvn',
+    data: {
+      // 权限
+      permissions: {
+        'rw': '读写',
+        'r': '只读',
+        'w': '只写',
+        '': '禁止',
+        'read': '只读',
+        'write': '只写',
+        'none': '禁止',
+      },
+    },
+    init: function () {//初始化
+      var _that = this;
+      $(".bt-w-menu p").click(function () {
+        var i = $(this).index();
+        $(this).addClass("bgw").siblings().removeClass("bgw");
+        switch (i) {
+          case 0:
+            _that.getServerStatus();
+            break;
+          case 1:
+            _that.render_version_list()
+            break;
+        }
+      });
+      $(".bt-w-menu p").eq(0).click()
+      $('.layui-layer-page').css({
+        width: '760px'
+      })
+    },
+    getServerStatus: function () {
+      bt_tools.send({ url: '/plugin?action=a&name=btsvn&s=get_svn_status' }, function (rdata) {
+        var _html = '', btn = [{ title: '启动', value: 'start' }, { title: '停止', value: 'stop' }, { title: '重启', value: 'restart' }]
+        for (var i = 0; i < btn.length; i++) {
+          if (rdata.status === true && btn[i].value == 'start') continue
+          if (rdata.status === false && btn[i].value == 'stop') continue
+          _html += '<button class="btn btn-default btn-sm mr16" data-action="' + btn[i].value + '">' + btn[i].title + '</button>'
+        }
+        $('#webEdit-con').html('<div class="soft-man-con">\
+              <p class="status">\
+                  服务状态:\
+                  <span>'+ (rdata.status == true ? '开启' : '关闭') + '</span>\
+                  <span style="color: '+ (rdata.status == true ? '#20a53a' : 'red') + '; margin-left: 3px;" class="glyphicon glyphicon ' + (rdata.data == true ? 'glyphicon-play' : 'glyphicon-pause') + '"></span>\
+              </p>\
+              <div>'+ _html + '</div>\
+          </div>')
+        $('#webEdit-con button').unbind('click').click(function () {
+          var action = $(this).data('action')
+          var str = $(this).text(), msg = ''
+          if (action == 'reload') {
+            msg = '重载项目后，当前项目服务将重载运行，是否继续操作？'
+          } else {
+            msg = str + '项目后，当前项目服务将' + str + '运行，是否继续操作？'
+          }
+          bt.simple_confirm({
+            title: str + 'btsvn服务',
+            msg: msg
+          }, function () {
+            bt_tools.send({ url: '/plugin?action=a&name=btsvn&s=' + action + '_svn_service' }, function (res) {
+              bt_tools.msg(res)
+              if (res.status) {
+                btsvn.getServerStatus()
+              }
+            }, str + 'btsvn服务')
+          })
+        })
+      }, { verify: false })
+    },
+    render_version_list: function () {
+      var _that = this
+      $('#webEdit-con').html('<div class="btsvnVersion"></div>')
+      bt_tools.table({
+        el: '.btsvnVersion',
+        url: '/plugin?action=a&name=btsvn&s=view_all_repository_configs',
+        height: 450,
+        dataFilter: function (res) {
+          return { data: res.msg }
+        },
+        default: "暂无数据",
+        autoHeight: true,
+        column: [
+          {
+            fid: 'repo_name',
+            title: '版本库名',
+            width: 110,
+            fixed: true,
+          },
+          {
+            fid: 'svn_url',
+            title: '仓库链接',
+            width: 280,
+            template: function (row) {
+              var url = row.svn_url || ('svn://127.0.0.1:3690/' + row.repo_name);
+              return '<div class="svn-url-container" style="position: relative;">' + 
+                     '<span class="svn-url-text" title="' + url + '" style="display: inline-block; max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">' + url + '</span>' + 
+                     '<a class="btlink copy-btn" data-clipboard-text="' + url + '" style="margin-left: 5px;"><i class="glyphicon glyphicon-copy"></i></a>' +
+                     '<span class="view-full-url" style="color: #20a53a; cursor: pointer; margin-left: 5px;">查看</span>' +
+                     '</div>';
+            },
+            event: function(row, index, ev) {
+              if($(ev.target).hasClass('view-full-url') || $(ev.target).parent().hasClass('view-full-url')) {
+                var url = row.svn_url || ('svn://127.0.0.1:3690/' + row.repo_name);
+                layer.open({
+                  type: 1,
+                  title: '完整仓库链接',
+                  area: '500px',
+                  closeBtn: 2,
+                  shadeClose: false,
+                  content: '<div class="pd20">' +
+                           '<div class="line">' +
+                           '<span class="mr5">链接地址：</span>' +
+                           '<input type="text" class="bt-input-text" style="width: 400px;" value="' + url + '" readonly />' +
+                           '<button class="btn btn-success btn-sm ml5 copy-full-url" data-clipboard-text="' + url + '">复制</button>' +
+                           '</div>' +
+                           '<div class="mt10">提示：您可以使用此链接地址通过SVN客户端访问您的版本库</div>' +
+                           '</div>',
+                  success: function() {
+                    var clipboard = new ClipboardJS('.copy-full-url');
+                    clipboard.on('success', function(e) {
+                      layer.msg('复制成功', {icon: 1});
+                      e.clearSelection();
+                    });
+                  }
+                });
+              }
+            }
+          },
+          {
+            fid: 'anon_access',
+            title: '匿名用户访问权限',
+            width: 110,
+            template: function (row) {
+              return '<span>' + btsvn.data.permissions[row.anon_access] + '</span>'
+            }
+          },
+          {
+            fid: 'auth_access',
+            title: '认证用户访问权限',
+            width: 110,
+            template: function (row) {
+              return '<span>' + btsvn.data.permissions[row.auth_access] + '</span>'
+            }
+          },
+          {
+            fid: 'deploy_path',
+            title: '自动部署',
+            width: 70,
+            template: function (row) {
+              if (row.deploy_path && row.deploy_path.length > 0) {
+                return '<span class="bt-green">已配置</span>';
+              } else {
+                return '<span class="bt-gray">未配置</span>';
+              }
+            }
+          },
+          {
+            fid: 'users',
+            title: '用户信息',
+            type: 'link',
+            width: 70,
+            template: function (row) {
+              return '查看详情'
+            },
+            event: function (row) {
+              var _tr = ''
+              for (const key in row.users) {
+                _tr += '<tr>\
+                    <th width="80">用户名</th>\
+                    <td><div style="max-width: 300px;word-break: break-all;">'+ key + '</div></td>\
+                    </tr>\
+                    <tr>\
+                    <th>密码</th>\
+                    <td><div style="max-width: 300px;word-break: break-all;">'+ row.users[key] + '</div></td>\
+                    </tr>\
+                    <tr>\
+                    <th>权限</th>\
+                    <td><div style="max-width: 300px;word-break: break-all;">'+ btsvn.data.permissions[row.permissions[key]] + '</div></td>\
+                    </tr>'
+              }
+              bt_tools.open({
+                title: '【' + row.repo_name + '】用户信息',
+                area: '440px',
+                btn: false,
+                content: '<div class="pd20"><table class="table" style="border:#ddd 1px solid;">' + _tr + '</table></div>'
+              })
+            }
+          },
+          {
+            title: '操作',
+            align: 'right',
+            type: 'group',
+            width: 160,
+            group: [
+              {
+                title: '修改',
+                event: function (row, index, ev, key, that) {
+                  that.editVersion(row)
+                }
+              },
+              {
+                title: '部署日志',
+                class: function(row) {
+                  return row.deploy_path ? '' : 'hide';
+                },
+                event: function (row, index, ev, key, that) {
+                  _that.viewDeployLogs(row);
+                }
+              },
+              {
+                title: '删除',
+                event: function (row, index, ev, key, that) {
+                  bt.simple_confirm({
+                    title: '删除版本库【' + row.repo_name + '】',
+                    msg: '删除版本库后，版本库内的所有数据将被删除，是否继续操作？',
+                  }, function () {
+                    bt_tools.send({ url: '/plugin?action=a&name=btsvn&s=delete_repository', data: { repo_name: row.repo_name } }, function (res) {
+                      bt_tools.msg(res)
+                      if (res.status) that.$refresh_table_list()
+                    }, '删除版本库')
+                  })
+                }
+              }
+            ]
+          }
+        ],
+        methods: {
+          editVersion: function (row) {
+            var username = '', passwd = '', permissions = ''
+            if (row) {
+              for (const key in row.users) {
+                username = key
+                passwd = row.users[key]
+                permissions = row.permissions[key]
+              }
+            }
+            bt_tools.open({
+              title: row ? '修改版本库' : '创建版本库',
+              area: '530px',
+              content: {
+                class: 'pd20',
+                formLabelWidth: '120px',
+                form: [
+                  {
+                    label: '版本库名称',
+                    group: [{
+                      type: 'text',
+                      name: 'repo_name',
+                      disabled: row ? true : false,
+                      width: '320px',
+                      placeholder: '请输入版本库名称',
+                      value: row ? row.repo_name : ''
+                    }]
+                  },
+                  {
+                    label: '匿名用户访问权限',
+                    group: [{
+                      type: 'select',
+                      name: 'anon_access',
+                      width: '320px',
+                      list: [
+                        { title: '只写', value: 'write' },
+                        { title: '只读', value: 'read' },
+                        { title: '禁止', value: 'none' },
+                      ],
+                      value: row ? row.anon_access : 'write'
+                    }]
+                  },
+                  {
+                    label: '认证用户访问权限',
+                    group: [{
+                      type: 'select',
+                      name: 'auth_access',
+                      width: '320px',
+                      list: [
+                        { title: '只写', value: 'write' },
+                        { title: '只读', value: 'read' },
+                        { title: '禁止', value: 'none' },
+                      ],
+                      value: row ? row.auth_access : 'write'
+                    }]
+                  },
+                  {
+                    label: '用户名',
+                    group: [{
+                      type: 'text',
+                      name: 'username',
+                      width: '320px',
+                      placeholder: '请输入用户名',
+                      value: row ? username : ''
+                    }]
+                  },
+                  {
+                    label: '密码',
+                    group: [{
+                      type: 'text',
+                      name: 'password',
+                      width: '320px',
+                      placeholder: '请输入密码',
+                      value: row ? passwd : ''
+                    }]
+                  },
+                  {
+                    label: '用户的权限',
+                    group: [{
+                      type: 'select',
+                      name: 'permissions',
+                      width: '320px',
+                      list: [
+                        { title: '读写', value: 'rw' },
+                        { title: '只写', value: 'w' },
+                        { title: '只读', value: 'r' },
+                        { title: '禁止', value: '' },
+                      ],
+                      value: row ? permissions : 'rw'
+                    }]
+                  },
+                  {
+                    label: '自动部署目录',
+                    group: [{
+                      type: 'text',
+                      name: 'deploy_path',
+                      width: '320px',
+                      placeholder: '请输入部署目录路径，为空则不自动部署',
+                      value: row ? row.deploy_path : '',
+                      icon: {
+                        type: 'glyphicon-folder-open',
+                        select: 'dir',
+                        event: function (ev, api) {}
+                      }
+                    }]
+                  },
+                  {
+                    label: '部署后执行脚本',
+                    group: [{
+                      type: 'textarea',
+                      name: 'deploy_script',
+                      width: '320px',
+                      placeholder: '部署完成后执行的自定义命令，例如：\nnpm install\nnpm run build',
+                      value: row ? row.deploy_script : ''
+                    }]
+                  }
+                ]
+              },
+              success: function (layers) {
+                $(layers).find('.layui-layer-content').css('overflow', 'inherit')
+              },
+              yes: function (form, indexs) {
+                if (form.repo_name === '') return layer.msg('版本库名称不能为空', { icon: 2 })
+                if (form.username === '') return layer.msg('用户名不能为空', { icon: 2 })
+                if (form.password === '') return layer.msg('密码不能为空', { icon: 2 })
+                
+                form['users'] = JSON.stringify({ [form.username]: form.password })
+                form['permissions'] = JSON.stringify({ [form.username]: form.permissions })
+                
+                delete form.username
+                delete form.password
+                
+                bt_tools.send({ url: '/plugin?action=a&name=btsvn&s=' + (row ? 'modify_repository_config' : 'create_and_configure_repository'), data: form }, function (res) {
+                  bt_tools.msg(res)
+                  if (res.status) {
+                    layer.close(indexs)
+                    _that.render_version_list()
+                  }
+                }, row ? '修改版本库' : '创建版本库')
+              }
+            })
+          }
+        },
+        tootls: [{ // 按钮组
+          type: 'group',
+          positon: ['left', 'top'],
+          list: [{
+            title: '创建版本库',
+            active: true,
+            event: function (ev, that) {
+              that.editVersion()
+            }
+          }]
+        }]
+      })
+      
+      // 初始化复制功能
+      setTimeout(function() {
+        var clipboard = new ClipboardJS('.copy-btn');
+        clipboard.on('success', function(e) {
+          layer.msg('复制成功', {icon: 1});
+          e.clearSelection();
+        });
+      }, 500);
+    },
+    viewDeployLogs: function(row) {
+      var _that = this;
+      
+      bt_tools.send({ url: '/plugin?action=a&name=btsvn&s=get_deploy_logs', data: { repo_name: row.repo_name } }, function (res) {
+        if (!res.status) {
+          bt_tools.msg(res);
+          return;
+        }
+        
+        var logContent = res.msg || '暂无部署日志';
+        var logObj = {
+          el: 'deploy_logs_' + row.repo_name,
+          mode: 'text',
+          content: logContent,
+          readOnly: true,
+          theme: 'ace/theme/monokai'
+        };
+        
+        bt_tools.open({
+          title: row.repo_name + ' - 部署日志',
+          area: ['700px', '500px'],
+          btn: false,
+          content: '<div class="pd15">\
+                  <div style="height: 400px;" id="deploy_logs_' + row.repo_name + '"></div>\
+                  <button class="btn btn-success btn-sm mt10 refresh-log">刷新</button>\
+                </div>',
+          success: function() {
+            var aEditor = bt.aceEditor(logObj);
+            setTimeout(function() {
+              aEditor.ACE.getSession().setScrollTop(aEditor.ACE.renderer.scrollBar.scrollHeight);
+            }, 50);
+            
+            $('.refresh-log').click(function() {
+              _that.refreshDeployLog(row, aEditor);
+            });
+          }
+        });
+      });
+    },
+    
+    refreshDeployLog: function(row, editor) {
+      bt_tools.send({ url: '/plugin?action=a&name=btsvn&s=get_deploy_logs', data: { repo_name: row.repo_name } }, function (res) {
+        if (!res.status) {
+          bt_tools.msg(res);
+          return;
+        }
+        
+        var logContent = res.msg || '暂无部署日志';
+        editor.ACE.setValue(logContent);
+        setTimeout(function() {
+          editor.ACE.getSession().setScrollTop(editor.ACE.renderer.scrollBar.scrollHeight);
+        }, 50);
+      });
+    },
+    render_config_file_view: function () {
+      var _that = this
+      $("#webEdit-con").html('<div class="server-config"></div>')
+      bt_tools.send({ url: '/plugin?action=a&name=btsvn&s=get_btsvn_config' }, function (res) {
+        res.rotation_size = res.rotation_size.split('M')[0]
+        var configForm = bt_tools.form({
+          el: '.server-config',
+          data: res,
+          formLabelWidth: '120px',
+          form: [
+            {
+              label: 'TCP监听端口',
+              group: [{
+                type: 'number',
+                name: 'native_tcp_port',
+                width: '200px',
+                placeholder: '请输入TCP监听端口',
+              }, {
+                type: 'other',
+                hide: res.native ? true : false,
+                boxcontent: '<a class="btlink release-port">一键放行端口号</a>'
+              }]
+            },
+            {
+              label: 'MySQL驱动端口',
+              group: [{
+                type: 'number',
+                name: 'mysql_port',
+                width: '200px',
+                placeholder: '请输入MySQL驱动端口'
+              }, {
+                type: 'other',
+                hide: res.mysql ? true : false,
+                boxcontent: '<a class="btlink release-port">一键放行端口号</a>'
+              }]
+            },
+            {
+              label: 'HTTP API端口',
+              group: [{
+                type: 'number',
+                name: 'http_port',
+                width: '200px',
+                placeholder: '请输入HTTP API端口'
+              }, {
+                type: 'other',
+                hide: res.http ? true : false,
+                boxcontent: '<a class="btlink release-port">一键放行端口号</a>'
+              }]
+            },
+            {
+              label: '默认数据库',
+              group: [{
+                type: 'text',
+                name: 'default_database',
+                width: '200px',
+                placeholder: '请输入默认数据库'
+              }]
+            },
+            {
+              label: '主要日志路径',
+              group: [
+                {
+                  type: 'text',
+                  name: 'acc_log',
+                  width: '340px',
+                  icon: {
+                    type: 'glyphicon-folder-open',
+                    select: 'dir',
+                    defaultPath: $('[name=acc_log]').val(),
+                    event: function (ev) { },
+                  },
+                },
+              ],
+            },
+            {
+              label: '错误日志路径',
+              group: [
+                {
+                  type: 'text',
+                  name: 'err_log',
+                  width: '340px',
+                  icon: {
+                    type: 'glyphicon-folder-open',
+                    select: 'dir',
+                    defaultPath: $('[name=err_log]').val(),
+                    event: function (ev) { },
+                  },
+                },
+              ],
+            },
+            {
+              label: '日志级别',
+              group: [
+                {
+                  type: 'select',
+                  name: 'log_level',
+                  width: '200px',
+                  list: [
+                    { title: 'TRACE', value: 'trace' },
+                    { title: 'DEBUG', value: 'debug' },
+                    { title: 'INFO', value: 'info' },
+                    { title: 'WARN', value: 'warn' },
+                    { title: 'ERROR', value: 'error' },
+                    { title: 'FATAL', value: 'fatal' },
+                    { title: 'OFF', value: 'off' },
+                  ]
+                }
+              ]
+            },
+            {
+              label: '日志轮转大小',
+              group: [
+                {
+                  type: 'number',
+                  name: 'rotation_size',
+                  width: '200px',
+                  unit: 'MB 日志文件每达到' + res.rotation_size + '时会进行轮转',
+                },
+              ],
+            },
+            {
+              label: '日志文件保留数量',
+              group: [
+                {
+                  type: 'number',
+                  name: 'rotation_count',
+                  width: '200px',
+                  unit: '保留最新的' + res.rotation_count + '个轮转后的日志文件'
+                },
+              ],
+            },
+            {
+              label: '密码',
+              group: [
+                {
+                  type: 'text',
+                  name: 'passwd',
+                  width: '200px',
+                  icon: {
+                    type: 'glyphicon-repeat',
+                    name: 'random',
+                  },
+                },
+              ],
+            },
+            {
+              label: '',
+              group: [{
+                type: 'button',
+                title: '保存',
+              }]
+            },
+          ]
+        })
+        $('.server-config .release-port').unbind('click').click(function () {
+          var port = $(this).parents('.info-r').find('[type=number]').val(),
+            name = $(this).parents('.info-r').find('tname').text()
+          bt_tools.send({ url: '/safe/firewall/create_rules', data: { data: JSON.stringify({ protocol: "tcp", ports: port, choose: "all", address: "", domain: "", types: "accept", brief: "btsvn管理" + name, source: "" }) } }, function (res) {
+            bt_tools.msg(res)
+            if (res.status) _that.render_config_file_view()
+          }, { load: '添加放行端口' })
+        })
+        $('.server-config [type=number]').on('input', function () {
+          var val = $(this).val(), name = $(this).prop('name')
+          layer.closeAll('tips')
+          if (name === 'native_tcp_port' || name === 'mysql_port' || name === 'http_port') {
+            if (val === '' || !bt.check_port(val) || !bt.isInteger(parseFloat(val))) layer.tips('端口格式错误，可用范围：1-65535', $(this), { tips: [1, '#ff0000'], time: 2000 })
+          }
+          if (name === 'rotation_count') {
+            if (val === '' || !bt.isInteger(parseFloat(val)) || parseFloat(val) <= 0) layer.tips('内容必须大于0的整数', $(this), { tips: [1, '#ff0000'], time: 2000 })
+          }
+          if (name === 'rotation_size') {
+            if (val === '' || !bt.isInteger(parseFloat(val)) || parseFloat(val) < 10) layer.tips('内容必须大于10的整数', $(this), { tips: [1, '#ff0000'], time: 2000 })
+          }
+        })
+        $('.server-config [type=text]').on('input', function () {
+          var val = $(this).val(), name = $(this).prop('name')
+          layer.closeAll('tips')
+          if (val === '') layer.tips('不能为空', $(this), { tips: [1, '#ff0000'], time: 2000 })
+        })
+        $('.server-config button').unbind('click').click(function () {
+          var formData = configForm.$get_form_value()
+          if (formData.native_tcp_port === '' || !bt.check_port(formData.native_tcp_port) || !bt.isInteger(parseFloat(formData.native_tcp_port))) return layer.msg('TCP监听端口格式错误，可用范围：1-65535', { icon: 2 })
+          if (formData.mysql_port === '' || !bt.check_port(formData.mysql_port) || !bt.isInteger(parseFloat(formData.mysql_port))) return layer.msg('MySQL驱动端口格式错误，可用范围：1-65535', { icon: 2 })
+          if (formData.http_port === '' || !bt.check_port(formData.http_port) || !bt.isInteger(parseFloat(formData.http_port))) return layer.msg('HTTP API监听端口格式错误，可用范围：1-65535', { icon: 2 })
+          if (formData.default_database === '') return layer.msg('默认数据库不能为空', { icon: 2 })
+          if (formData.acc_log === '') return layer.msg('主要日志路径不能为空', { icon: 2 })
+          if (formData.err_log === '') return layer.msg('错误日志路径不能为空', { icon: 2 })
+          if (formData.rotation_size === '' || !bt.isInteger(parseFloat(formData.rotation_size)) || parseFloat(formData.rotation_size) < 10) return layer.msg('日志轮转大小必须为大于10的整数', { icon: 2 })
+          if (formData.rotation_count === '' || !bt.isInteger(parseFloat(formData.native_tcp_port)) || parseFloat(formData.native_tcp_port) <= 0) return layer.msg('日志文件保留数量必须为大于0的整数', { icon: 2 })
+          if (formData.passwd === '') return layer.msg('密码不能为空', { icon: 2 })
+          formData.rotation_size = formData.rotation_size + 'M'
+          bt_tools.send({ url: '/plugin?action=a&name=btsvn&s=set_config', data: formData }, function (rdata) {
+            bt_tools.msg(rdata)
+            if (rdata.status) {
+              _that.render_config_file_view()
+            }
+          }, '设置配置信息')
+        })
+        //随机密码
+        $('.glyphicon-repeat').click(function () {
+          $(this).siblings('input').val(bt.get_random(16))
+        })
+      }, '获取配置信息')
+    },
+    // 渲染配置文件
+    render_config_body: function () {
+      $('#webEdit-con').html('<div class="tab-body">\
+            <div class="tab-nav ml0 mb15">\
+              <span>主配置文件</span>\
+              <span>默认用户配置文件</span>\
+            </div>\
+            <div class="tab-con" style="padding: 0;">\
+              <div class="tab-block">'+ render_html('ConfigBody') + '</div>\
+              <div class="tab-block">'+ render_html('userConfigBody') + '</div>\
+            </div>\
+          </div>')
+      $('#webEdit-con .tab-nav span').click(function () {
+        var index = $(this).index()
+        $(this).addClass('on').siblings().removeClass('on')
+        $('#webEdit-con .tab-con .tab-block').eq(index).addClass('on').siblings().removeClass('on')
+        var obj = {
+          el: 'ConfigBody',
+          path: '/etc/btsvn-server/config.xml',
+          title: '主配置文件'
+        }
+        if (index) {
+          obj.el = 'userConfigBody'
+          obj.path = '/etc/btsvn-server/users.d/default-password.xml'
+          obj.title = '默认用户配置文件'
+        }
+        render_config(obj)
+      })
+      $('#webEdit-con .tab-nav span').eq(0).click()
+
+      // 渲染html
+      function render_html(el) {
+        return '<p style="color: #666; margin-bottom: 7px">提示：Ctrl+F 搜索关键字，Ctrl+S 保存，Ctrl+H 查找替换</p>\
+              <div class="bt-input-text ace_config_editor_scroll" style="height: 400px; line-height:18px;" id="'+ el + '"></div>\
+              <span class="full-icon full" title="全屏展示" style="top: 50px;right: 40px;"></span>\
+              <button class="OnlineEditFileBtn btn btn-success btn-sm" style="margin-top:10px;">保存</button>'
+      }
+
+      // 渲染内容
+      function render_config(obj) {
+        var config = bt.aceEditor({
+          el: obj.el,
+          path: obj.path,
+          content: '',
+        });
+        setTimeout(function () {
+          $('.ace_scrollbar-h').hide();
+        }, 200);
+
+        config.ACE.commands.addCommand({
+          name: '保存文件',
+          bindKey: {
+            win: 'Ctrl-S',
+            mac: 'Command-S',
+          },
+          exec: function (editor) {
+            bt.saveEditor(config);
+          },
+          readOnly: false, // 如果不需要使用只读模式，这里设置false
+        });
+
+        fullEvent();
+
+        config.ACE.getSession().on('change', function (editor) {
+          fullEvent();
+        });
+        function fullEvent() {
+          // 全屏事件
+          $('#webEdit-con').find('.full')
+            .unbind('click')
+            .click(function () {
+              bt.site.fullEdiotrView({ title: '查看' + obj.title, msg: config.ACE.getValue(), readOnly: false, path: config.path }, function (data) {
+                config.ACE.setValue(data.ACE.getValue());
+              });
+            });
+        }
+        $('#webEdit-con').find('.OnlineEditFileBtn').click(function (e) {
+          bt.saveEditor(config);
+        });
+        setTimeout(function () {
+          $('.ace_scrollbar-h').hide();
+        }, 100);
+      }
+
+    },
+    // 渲染日志
+    render_logs: function () {
+      $('#webEdit-con').html('<div class="tab-body">\
+            <div class="tab-nav ml0 mb15">\
+              <span>错误日志</span>\
+              <span>运行日志</span>\
+            </div>\
+            <div class="tab-con" style="padding: 0;">\
+              <div class="tab-block">'+ render_html('error_logs') + '</div>\
+              <div class="tab-block">'+ render_html('run_logs') + '</div>\
+            </div>\
+          </div>')
+      $('#webEdit-con .tab-nav span').click(function () {
+        var index = $(this).index()
+        $(this).addClass('on').siblings().removeClass('on')
+        $('#webEdit-con .tab-con .tab-block').eq(index).addClass('on').siblings().removeClass('on')
+        var obj = {
+          el: 'error_logs',
+          url: '/plugin?action=a&name=btsvn&s=get_err_logs'
+        }
+        if (index) {
+          obj.el = 'run_logs'
+          obj.url = '/plugin?action=a&name=btsvn&s=get_acc_logs'
+        }
+        get_logs(obj)
+      })
+      $('#webEdit-con .tab-nav span').eq(0).click()
+      function render_html(el) {
+        return '<div class="logs-box"><div class="mb10 flex"><button class="btn btn-success btn-sm refresh">刷新</button></div>\
+                <div class="logs-content"><div class="bt-form" id="'+ el + '" style="height: 410px;"></div>\
+                <div class="c6 mt10">提示：支持Ctrl + F，快捷搜索日志内容</div>\
+                <span class="icon-full full" title="全屏展示"></span></div></div>'
+      }
+
+      // 获取指定日志内容
+      function get_logs(obj) {
+        bt_tools.send({ url: obj.url }, function (res) {
+          var msg = res ? res : '暂无日志数据'
+          var logs_obj = {
+            el: obj.el,
+            mode: 'dockerfile',
+            content: msg,
+            readOnly: true,
+            theme: 'ace/theme/monokai'
+          }
+          var aEditor = bt.aceEditor(logs_obj)
+          setTimeout(function () {
+            aEditor.ACE.getSession().setScrollTop(aEditor.ACE.renderer.scrollBar.scrollHeight)
+          }, 50)
+          bt.site.fullScreenLog($('<div>' + msg + '</div>'), { name: obj.el === 'error_logs' ? '错误日志' : '运行日志' }, '', true)
+          // 刷新日志
+          $('.refresh').unbind('click').click(function () {
+            get_logs(obj)
+          })
+        }, { load: '获取日志', verify: false })
+      }
+    },
+  }
+  btsvn.init();
+</script>
